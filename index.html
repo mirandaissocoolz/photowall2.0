@@ -169,6 +169,39 @@
       letter-spacing: 0.05em;
       z-index: 1;
     }
+
+    /* ── Narrow layout ──
+       Triggers when the desktop side-by-side arrangement can't keep a 50px
+       gap between the main photo and the thumbnail column. At max photo
+       width (720) centered at 50%+80, that gap drops below 50 at innerWidth
+       < 1138, so that's the breakpoint. The thumbnail bar flips to a
+       horizontal row at the bottom; the scrollbar is hidden. */
+    @media (max-width: 1137px) {
+      .info-icon { top: 40px; }
+
+      .scrollbar { display: none; }
+
+      .thumbs-wrap {
+        left: 0;
+        top: auto;
+        bottom: 50px;
+        width: 100vw;
+        height: 95px;
+        touch-action: pan-y;     /* horizontal handled here */
+      }
+      .thumbs-track {
+        flex-direction: row;
+        align-items: center;
+      }
+
+      .stage {
+        left: 50%;
+        /* Center stage between info icon (~69px from top) and the top of
+           the thumbnail row (50 + 95 = 145px from the bottom). Midpoint of
+           that band is innerHeight/2 - 38, so shift the center up by 38px. */
+        transform: translate(-50%, calc(-50% - 38px));
+      }
+    }
   </style>
 </head>
 <body>
@@ -203,9 +236,19 @@
     const SUPABASE_URL = 'https://nioduagbvcawrgfhjfog.supabase.co';
     const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pb2R1YWdidmNhd3JnZmhqZm9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4OTA3NjksImV4cCI6MjA5NzQ2Njc2OX0.PcgwFXrTjJpSWHbmwMkS2wtJtzlHki8WtYG95FP9I3k';
 
+    const THUMB_W = 124;
     const THUMB_H = 95;
     const GAP = 30;
-    const STEP = THUMB_H + GAP;   // distance from one thumb's top to the next
+
+    // Layout flips between two arrangements:
+    //   - Desktop: vertical thumbnail column on the left, photo to the right
+    //   - Narrow:  horizontal thumbnail row at the bottom, photo above
+    // The trigger is when the photo would sit within 50px of the column on
+    // the desktop layout (see narrow-layout CSS for the math).
+    const NARROW_BREAKPOINT = 1138;
+    const isHorizontal = () => window.innerWidth < NARROW_BREAKPOINT;
+    const thumbSize = () => isHorizontal() ? THUMB_W : THUMB_H;
+    const step = () => thumbSize() + GAP;
 
     const MONTHS = [
       'January', 'February', 'March', 'April', 'May', 'June',
@@ -252,6 +295,14 @@
     }
 
     function stageBounds() {
+      if (isHorizontal()) {
+        // Narrow layout: full width minus side padding; vertical space
+        // capped above the bottom thumb row.
+        const maxW = Math.min(720, window.innerWidth - 100);
+        // Reserve top info-icon area + meta + thumb row at bottom + buffers.
+        const maxH = Math.max(200, window.innerHeight - 320);
+        return { w: Math.max(200, maxW), h: maxH };
+      }
       // The stage is centered in the gap between the thumbnail column
       // (right edge ~239) and the info icon (left edge ~innerWidth-79).
       // Reserve a small buffer on each side.
@@ -273,12 +324,23 @@
       const track = document.getElementById('thumbsTrack');
       const wrap = document.getElementById('thumbsWrap');
 
-      // Pad the track so item 0 can sit at the viewport's vertical center
-      // (where the selected rectangle is) and item N-1 can sit there too.
+      // Pad the track so item 0 can sit at the viewport's center along the
+      // scroll axis (vertical center on desktop, horizontal on narrow) —
+      // and so item N-1 can sit there too.
       function applyPadding() {
-        const pad = (window.innerHeight / 2) - (THUMB_H / 2);
-        track.style.paddingTop = pad + 'px';
-        track.style.paddingBottom = pad + 'px';
+        if (isHorizontal()) {
+          const pad = (window.innerWidth / 2) - (THUMB_W / 2);
+          track.style.paddingLeft = pad + 'px';
+          track.style.paddingRight = pad + 'px';
+          track.style.paddingTop = '';
+          track.style.paddingBottom = '';
+        } else {
+          const pad = (window.innerHeight / 2) - (THUMB_H / 2);
+          track.style.paddingTop = pad + 'px';
+          track.style.paddingBottom = pad + 'px';
+          track.style.paddingLeft = '';
+          track.style.paddingRight = '';
+        }
       }
       applyPadding();
 
@@ -298,16 +360,17 @@
       });
 
       const maxIdx = photos.length - 1;
-      const maxScroll = () => maxIdx * STEP;
+      const maxScroll = () => maxIdx * step();
       const clamp = (v) => Math.max(0, Math.min(maxScroll(), v));
 
-      // State
-      let scrollY = 0;          // pixels scrolled (item i centered when scrollY = i*STEP)
+      // State — scrollPos is along the active scroll axis (Y on desktop,
+      // X on narrow). Item i is centered when scrollPos = i * step().
+      let scrollPos = 0;
       let velocity = 0;         // px/sec
       let isDragging = false;   // dragging the thumbnail column
       let sbDragging = false;   // dragging the scrollbar thumb
       let pointerSamples = [];
-      let dragMovement = 0;     // total |dy| during a thumbnail-drag gesture
+      let dragMovement = 0;     // total |delta| during a thumbnail-drag gesture
       let lastTs = null;
       let selectedIdx = -1;
 
@@ -341,7 +404,7 @@
       }
 
       function glideTo(i) {
-        glideTarget = clamp(i * STEP);
+        glideTarget = clamp(i * step());
         velocity = 0;
       }
 
@@ -354,7 +417,7 @@
         glideTarget = null;
         velocity = 0;
         dragMovement = 0;
-        pointerSamples = [{ y: e.clientY, t: performance.now() }];
+        pointerSamples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
         wrap.setPointerCapture(e.pointerId);
         wrap.classList.add('dragging');
       });
@@ -363,10 +426,10 @@
         if (!isDragging) return;
         const now = performance.now();
         const last = pointerSamples[pointerSamples.length - 1];
-        const dy = e.clientY - last.y;
-        scrollY = clamp(scrollY - dy);
-        dragMovement += Math.abs(dy);
-        pointerSamples.push({ y: e.clientY, t: now });
+        const delta = isHorizontal() ? (e.clientX - last.x) : (e.clientY - last.y);
+        scrollPos = clamp(scrollPos - delta);
+        dragMovement += Math.abs(delta);
+        pointerSamples.push({ x: e.clientX, y: e.clientY, t: now });
         while (pointerSamples.length > 2 && now - pointerSamples[0].t > 80) {
           pointerSamples.shift();
         }
@@ -395,9 +458,9 @@
         if (pointerSamples.length >= 2) {
           const f = pointerSamples[0];
           const l = pointerSamples[pointerSamples.length - 1];
-          const dy = l.y - f.y;
+          const delta = isHorizontal() ? (l.x - f.x) : (l.y - f.y);
           const dt = Math.max(l.t - f.t, 1);
-          velocity = -dy / dt * 1000;
+          velocity = -delta / dt * 1000;
         }
       }
       wrap.addEventListener('pointerup', endDrag);
@@ -415,7 +478,7 @@
 
       function scrollToThumbTop(top) {
         const t = Math.max(0, Math.min(SB_RANGE, top));
-        scrollY = clamp(SB_RANGE > 0 ? (t / SB_RANGE) * maxScroll() : 0);
+        scrollPos = clamp(SB_RANGE > 0 ? (t / SB_RANGE) * maxScroll() : 0);
         velocity = 0;
       }
 
@@ -458,22 +521,43 @@
         }
         sbTrack.classList.remove('dragging');
         // Settle on the nearest thumbnail so the selection isn't between rows.
-        glideTarget = clamp(Math.round(scrollY / STEP) * STEP);
+        glideTarget = clamp(Math.round(scrollPos / step()) * step());
       }
       sbTrack.addEventListener('pointerup', endSbDrag);
       sbTrack.addEventListener('pointercancel', endSbDrag);
 
-      // ── Input: wheel / trackpad (vertical) ──
+      // ── Input: wheel / trackpad ──
+      // Use the dominant axis so a horizontal-wheel gesture works on the
+      // bottom thumb row, and a vertical-wheel gesture still works on the
+      // side column.
       wrap.addEventListener('wheel', (e) => {
         e.preventDefault();
         const d = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
-        scrollY = clamp(scrollY + d);
+        scrollPos = clamp(scrollPos + d);
         velocity = 0;
         glideTarget = null;
       }, { passive: false });
 
+      // Track which orientation we last rendered in, so resize can detect
+      // a crossing of the breakpoint and re-seed the scroll position.
+      let lastHorizontal = isHorizontal();
+
       window.addEventListener('resize', () => {
-        applyPadding();
+        const nowHorizontal = isHorizontal();
+        if (nowHorizontal !== lastHorizontal) {
+          // Orientation flipped — clear the old-axis transform, repad along
+          // the new axis, and snap scroll position to the current selection
+          // using the new step size.
+          track.style.transform = '';
+          lastHorizontal = nowHorizontal;
+          applyPadding();
+          scrollPos = clamp(Math.max(0, selectedIdx) * step());
+          glideTarget = null;
+          velocity = 0;
+        } else {
+          applyPadding();
+        }
+
         // Refit current photo to new bounds.
         const p = photos[selectedIdx];
         if (p) {
@@ -484,7 +568,7 @@
       });
 
       // Start on the first (oldest) photo.
-      scrollY = 0;
+      scrollPos = 0;
       setSelected(0);
 
       const FRICTION = 0.05;     // 5% velocity per second → quick settle
@@ -494,45 +578,50 @@
         if (lastTs !== null) {
           const dt = (ts - lastTs) / 1000;
           const userInteracting = isDragging || sbDragging;
+          const S = step();
 
           if (glideTarget !== null && !userInteracting) {
             // Critically-damped-ish glide toward the click target.
-            const dist = glideTarget - scrollY;
+            const dist = glideTarget - scrollPos;
             if (Math.abs(dist) < 0.5) {
-              scrollY = glideTarget;
+              scrollPos = glideTarget;
               glideTarget = null;
             } else {
-              scrollY += dist * Math.min(1, dt * 9);
+              scrollPos += dist * Math.min(1, dt * 9);
             }
           } else if (!userInteracting) {
             if (Math.abs(velocity) > 0.5) {
-              scrollY = clamp(scrollY + velocity * dt);
+              scrollPos = clamp(scrollPos + velocity * dt);
               velocity *= Math.pow(FRICTION, dt);
               if (Math.abs(velocity) < SNAP_THRESHOLD) {
                 velocity = 0;
-                glideTarget = clamp(Math.round(scrollY / STEP) * STEP);
+                glideTarget = clamp(Math.round(scrollPos / S) * S);
               }
-            } else if (scrollY % STEP !== 0) {
+            } else if (scrollPos % S !== 0) {
               // Idle but unsnapped → glide to nearest.
-              glideTarget = clamp(Math.round(scrollY / STEP) * STEP);
+              glideTarget = clamp(Math.round(scrollPos / S) * S);
             }
           }
         }
         lastTs = ts;
 
-        track.style.transform = `translateY(${(-scrollY).toFixed(2)}px)`;
+        const axis = isHorizontal() ? 'X' : 'Y';
+        track.style.transform = `translate${axis}(${(-scrollPos).toFixed(2)}px)`;
 
         // Currently-centered photo
-        const i = Math.max(0, Math.min(maxIdx, Math.round(scrollY / STEP)));
+        const i = Math.max(0, Math.min(maxIdx, Math.round(scrollPos / step())));
         setSelected(i);
 
-        // Scrollbar position — fixed-size thumb sliding along the visible track.
-        const TRACK_H = 280;
-        const THUMB_H_BAR = 137;
-        const range = Math.max(1, maxScroll());
-        const prog = scrollY / range;
-        const top = prog * (TRACK_H - THUMB_H_BAR);
-        scrollbarEl.style.top = top + 'px';
+        // Scrollbar position — fixed-size thumb sliding along the visible
+        // track. Only updated when the scrollbar is shown (desktop layout).
+        if (!isHorizontal()) {
+          const TRACK_H = 280;
+          const THUMB_H_BAR = 137;
+          const range = Math.max(1, maxScroll());
+          const prog = scrollPos / range;
+          const top = prog * (TRACK_H - THUMB_H_BAR);
+          scrollbarEl.style.top = top + 'px';
+        }
 
         requestAnimationFrame(frame);
       }
