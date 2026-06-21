@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>photo gallery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rethink+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: white;
+      color: black;
+      font-family: 'Rethink Sans', system-ui, sans-serif;
+      font-weight: 400;
+      overflow: hidden;
+    }
+
+    /* ── Info icon (top right) — exact vector from Figma ── */
+    .info-icon {
+      position: fixed;
+      top: 50px;
+      right: 50px;
+      width: 29px;
+      height: 29px;
+      display: block;
+      cursor: pointer;
+      color: rgba(0, 0, 0, 0.5);
+      z-index: 40;
+      transition: color 0.15s;
+    }
+    .info-icon:hover { color: black; }
+    .info-icon svg { width: 100%; height: 100%; display: block; }
+
+    /* ── Custom scrollbar (draggable) ── */
+    /* 50px from the left edge of the screen. The track is interactive —
+       click anywhere on it to jump, or drag the thumb. */
+    .scrollbar {
+      position: fixed;
+      left: 50px;
+      top: 50%;
+      width: 24px;              /* wider hit area than the visible 9px bar */
+      height: 280px;
+      transform: translateY(-50%);
+      cursor: pointer;
+      touch-action: none;
+      z-index: 8;
+    }
+    .scrollbar-thumb {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 9px;
+      height: 137px;
+      background: rgba(217, 217, 217, 0.85);
+      border-radius: 9px;
+      will-change: top;
+      transition: background 0.15s;
+    }
+    .scrollbar:hover .scrollbar-thumb,
+    .scrollbar.dragging .scrollbar-thumb {
+      background: rgba(180, 180, 180, 0.95);
+    }
+
+    /* ── Thumbnail column ── */
+    /* Sits 56px to the right of the scrollbar's hit area (which starts at
+       x=50) — keeps the close spacing from the previous iteration. */
+    .thumbs-wrap {
+      position: fixed;
+      left: 115px;
+      top: 0;
+      height: 100vh;
+      width: 124px;
+      overflow: hidden;
+      cursor: grab;
+      touch-action: pan-x;      /* vertical handled here */
+      user-select: none;
+      -webkit-user-select: none;
+      z-index: 4;
+    }
+    .thumbs-wrap.dragging { cursor: grabbing; }
+
+    .thumbs-track {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 30px;
+      will-change: transform;
+    }
+
+    .thumb {
+      width: 124px;
+      height: 95px;
+      flex-shrink: 0;
+      overflow: hidden;
+      background: #efefef;
+      cursor: pointer;
+    }
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      pointer-events: none;
+      -webkit-user-drag: none;
+      /* Unselected thumbs are desaturated; the active one is full-color. */
+      filter: grayscale(1);
+      transition: filter 0.25s;
+    }
+    .thumb.is-selected img {
+      filter: grayscale(0);
+    }
+
+    /* ── Main stage ── */
+    /* Centered horizontally in the visible gap between the thumbnail
+       column (right edge ~239px) and the info icon (left edge ~79px from
+       the right). Midpoint of that gap is 80px right of viewport center. */
+    .stage {
+      position: fixed;
+      left: calc(50% + 80px);
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      z-index: 2;
+    }
+
+    .main-photo-wrap {
+      background: #f4f4f4;
+      overflow: hidden;
+      will-change: opacity;
+      transition: opacity 0.18s ease;
+    }
+    .main-photo-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .meta {
+      margin-top: 18px;
+      padding-left: 2px;
+      line-height: 1.2;
+    }
+    .meta .title {
+      font-size: 21.25px;
+      color: black;
+    }
+    .meta .date {
+      margin-top: 10px;          /* breathing room between title and date */
+      font-size: 21.25px;
+      color: rgba(0, 0, 0, 0.5);
+    }
+
+    /* ── Loading ── */
+    #loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 13px;
+      color: rgba(0, 0, 0, 0.3);
+      letter-spacing: 0.05em;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="info-icon" title="info" role="button" aria-label="info">
+    <svg viewBox="0 0 26.6667 26.6667" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M13.3333 18.1667V13.3333M13.3333 8.5H13.3454M25.4167 13.3333C25.4167 20.0067 20.0067 25.4167 13.3333 25.4167C6.65989 25.4167 1.25 20.0067 1.25 13.3333C1.25 6.65989 6.65989 1.25 13.3333 1.25C20.0067 1.25 25.4167 6.65989 25.4167 13.3333Z" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <div class="scrollbar">
+    <div class="scrollbar-thumb" id="scrollbar"></div>
+  </div>
+
+  <div class="thumbs-wrap" id="thumbsWrap">
+    <div class="thumbs-track" id="thumbsTrack"></div>
+  </div>
+
+  <div class="stage">
+    <div class="main-photo-wrap" id="mainPhotoWrap">
+      <img id="mainPhoto" alt="">
+    </div>
+    <div class="meta">
+      <div class="title" id="metaTitle">—</div>
+      <div class="date" id="metaDate">—</div>
+    </div>
+  </div>
+
+  <div id="loading">loading photos…</div>
+
+  <script>
+    const SUPABASE_URL = 'https://nioduagbvcawrgfhjfog.supabase.co';
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pb2R1YWdidmNhd3JnZmhqZm9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4OTA3NjksImV4cCI6MjA5NzQ2Njc2OX0.PcgwFXrTjJpSWHbmwMkS2wtJtzlHki8WtYG95FP9I3k';
+
+    const THUMB_H = 95;
+    const GAP = 30;
+    const STEP = THUMB_H + GAP;   // distance from one thumb's top to the next
+
+    const MONTHS = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    function photoUrl(fileName) {
+      return `${SUPABASE_URL}/storage/v1/object/public/photos/${encodeURIComponent(fileName)}`;
+    }
+
+    async function fetchPhotos() {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/photos?select=id,file_name,title,taken_at,width,height&order=taken_at.desc`,
+        { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+      );
+      return r.json();
+    }
+
+    function formatDate(s) {
+      if (!s) return '';
+      const d = new Date(s + 'T00:00:00');
+      return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    }
+
+    function displayTitle(p) {
+      // Prefer the curated title column from Supabase; fall back to a
+      // humanized file name if it's missing.
+      if (p.title && p.title.trim()) return p.title;
+      return p.file_name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').toLowerCase();
+    }
+
+    // Fit a photo's natural w/h into the available stage area while
+    // preserving aspect ratio.
+    function fitPhoto(w, h) {
+      const available = stageBounds();
+      const aspect = w / h;
+      let rw = available.w;
+      let rh = rw / aspect;
+      if (rh > available.h) {
+        rh = available.h;
+        rw = rh * aspect;
+      }
+      return { w: Math.round(rw), h: Math.round(rh) };
+    }
+
+    function stageBounds() {
+      // The stage is centered in the gap between the thumbnail column
+      // (right edge ~239) and the info icon (left edge ~innerWidth-79).
+      // Reserve a small buffer on each side.
+      const LEFT_EDGE = 239 + 32;     // thumbs + buffer
+      const RIGHT_EDGE = 79 + 32;     // info icon + buffer (from right)
+      const maxW = Math.min(720, window.innerWidth - LEFT_EDGE - RIGHT_EDGE);
+      const maxH = Math.max(280, window.innerHeight - 220);
+      return { w: Math.max(280, maxW), h: maxH };
+    }
+
+    async function main() {
+      const photos = await fetchPhotos();
+      if (!photos || photos.length === 0) {
+        document.getElementById('loading').textContent = 'no photos found';
+        return;
+      }
+      document.getElementById('loading').remove();
+
+      const track = document.getElementById('thumbsTrack');
+      const wrap = document.getElementById('thumbsWrap');
+
+      // Pad the track so item 0 can sit at the viewport's vertical center
+      // (where the selected rectangle is) and item N-1 can sit there too.
+      function applyPadding() {
+        const pad = (window.innerHeight / 2) - (THUMB_H / 2);
+        track.style.paddingTop = pad + 'px';
+        track.style.paddingBottom = pad + 'px';
+      }
+      applyPadding();
+
+      const photoEls = photos.map((p, i) => {
+        const el = document.createElement('div');
+        el.className = 'thumb';
+        el.dataset.idx = i;
+        const img = document.createElement('img');
+        img.src = photoUrl(p.file_name);
+        img.loading = 'lazy';
+        img.alt = '';
+        el.appendChild(img);
+        // Click handling is done in pointerup below (so it works even
+        // when the wrap has captured the pointer for drag-gesture detection).
+        track.appendChild(el);
+        return el;
+      });
+
+      const maxIdx = photos.length - 1;
+      const maxScroll = () => maxIdx * STEP;
+      const clamp = (v) => Math.max(0, Math.min(maxScroll(), v));
+
+      // State
+      let scrollY = 0;          // pixels scrolled (item i centered when scrollY = i*STEP)
+      let velocity = 0;         // px/sec
+      let isDragging = false;   // dragging the thumbnail column
+      let sbDragging = false;   // dragging the scrollbar thumb
+      let pointerSamples = [];
+      let dragMovement = 0;     // total |dy| during a thumbnail-drag gesture
+      let lastTs = null;
+      let selectedIdx = -1;
+
+      // Glide animation target (set by click / wheel snap / scrollbar release)
+      let glideTarget = null;
+
+      const mainPhoto = document.getElementById('mainPhoto');
+      const mainPhotoWrap = document.getElementById('mainPhotoWrap');
+      const metaTitle = document.getElementById('metaTitle');
+      const metaDate = document.getElementById('metaDate');
+      const scrollbarEl = document.getElementById('scrollbar');
+
+      function setSelected(i) {
+        if (i === selectedIdx) return;
+        selectedIdx = i;
+        const p = photos[i];
+
+        const fit = fitPhoto(p.width || 4, p.height || 3);
+        mainPhotoWrap.style.width = fit.w + 'px';
+        mainPhotoWrap.style.height = fit.h + 'px';
+        mainPhotoWrap.style.opacity = '0.25';
+        mainPhoto.onload = () => { mainPhotoWrap.style.opacity = '1'; };
+        mainPhoto.src = photoUrl(p.file_name);
+
+        metaTitle.textContent = displayTitle(p);
+        metaDate.textContent = formatDate(p.taken_at);
+
+        photoEls.forEach((el, idx) => {
+          el.classList.toggle('is-selected', idx === i);
+        });
+      }
+
+      function glideTo(i) {
+        glideTarget = clamp(i * STEP);
+        velocity = 0;
+      }
+
+      // ── Input: pointer drag on the thumbnail column ──
+      // Same gesture handles both flick-scrolling and click-to-select:
+      // small total movement at release → click on the thumb under the
+      // pointer; larger movement → flick with momentum.
+      wrap.addEventListener('pointerdown', (e) => {
+        isDragging = true;
+        glideTarget = null;
+        velocity = 0;
+        dragMovement = 0;
+        pointerSamples = [{ y: e.clientY, t: performance.now() }];
+        wrap.setPointerCapture(e.pointerId);
+        wrap.classList.add('dragging');
+      });
+
+      wrap.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const now = performance.now();
+        const last = pointerSamples[pointerSamples.length - 1];
+        const dy = e.clientY - last.y;
+        scrollY = clamp(scrollY - dy);
+        dragMovement += Math.abs(dy);
+        pointerSamples.push({ y: e.clientY, t: now });
+        while (pointerSamples.length > 2 && now - pointerSamples[0].t > 80) {
+          pointerSamples.shift();
+        }
+      });
+
+      function endDrag(e) {
+        if (!isDragging) return;
+        isDragging = false;
+        if (e && e.pointerId !== undefined) {
+          try { wrap.releasePointerCapture(e.pointerId); } catch (_) {}
+        }
+        wrap.classList.remove('dragging');
+
+        // Treat a near-stationary press as a click on the thumb under it.
+        if (dragMovement < 5 && e && typeof e.clientX === 'number') {
+          const hit = document.elementFromPoint(e.clientX, e.clientY);
+          const thumbEl = hit && hit.closest && hit.closest('.thumb');
+          if (thumbEl) {
+            glideTo(parseInt(thumbEl.dataset.idx, 10));
+            velocity = 0;
+            return;
+          }
+        }
+
+        // Otherwise compute release velocity from recent pointer samples.
+        if (pointerSamples.length >= 2) {
+          const f = pointerSamples[0];
+          const l = pointerSamples[pointerSamples.length - 1];
+          const dy = l.y - f.y;
+          const dt = Math.max(l.t - f.t, 1);
+          velocity = -dy / dt * 1000;
+        }
+      }
+      wrap.addEventListener('pointerup', endDrag);
+      wrap.addEventListener('pointercancel', endDrag);
+      wrap.addEventListener('pointerleave', endDrag);
+
+      // ── Input: scrollbar drag / click-to-jump ──
+      const sbTrack = document.querySelector('.scrollbar');
+      const sbThumb = document.getElementById('scrollbar');
+      const SB_TRACK_H = 280;
+      const SB_THUMB_H = 137;
+      const SB_RANGE = SB_TRACK_H - SB_THUMB_H;   // pixels the thumb can slide
+      let sbStartPointerY = 0;
+      let sbStartThumbTop = 0;
+
+      function scrollToThumbTop(top) {
+        const t = Math.max(0, Math.min(SB_RANGE, top));
+        scrollY = clamp(SB_RANGE > 0 ? (t / SB_RANGE) * maxScroll() : 0);
+        velocity = 0;
+      }
+
+      sbTrack.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        const rect = sbTrack.getBoundingClientRect();
+        const localY = e.clientY - rect.top;
+        const currentTop = parseFloat(sbThumb.style.top) || 0;
+
+        sbDragging = true;
+        glideTarget = null;
+        velocity = 0;
+
+        const onThumb = localY >= currentTop && localY <= currentTop + SB_THUMB_H;
+        if (onThumb) {
+          sbStartPointerY = e.clientY;
+          sbStartThumbTop = currentTop;
+        } else {
+          // Jump: place thumb so its center sits at the click.
+          const newTop = localY - SB_THUMB_H / 2;
+          scrollToThumbTop(newTop);
+          sbStartPointerY = e.clientY;
+          sbStartThumbTop = Math.max(0, Math.min(SB_RANGE, newTop));
+        }
+        sbTrack.setPointerCapture(e.pointerId);
+        sbTrack.classList.add('dragging');
+      });
+
+      sbTrack.addEventListener('pointermove', (e) => {
+        if (!sbDragging) return;
+        const dy = e.clientY - sbStartPointerY;
+        scrollToThumbTop(sbStartThumbTop + dy);
+      });
+
+      function endSbDrag(e) {
+        if (!sbDragging) return;
+        sbDragging = false;
+        if (e && e.pointerId !== undefined) {
+          try { sbTrack.releasePointerCapture(e.pointerId); } catch (_) {}
+        }
+        sbTrack.classList.remove('dragging');
+        // Settle on the nearest thumbnail so the selection isn't between rows.
+        glideTarget = clamp(Math.round(scrollY / STEP) * STEP);
+      }
+      sbTrack.addEventListener('pointerup', endSbDrag);
+      sbTrack.addEventListener('pointercancel', endSbDrag);
+
+      // ── Input: wheel / trackpad (vertical) ──
+      wrap.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const d = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        scrollY = clamp(scrollY + d);
+        velocity = 0;
+        glideTarget = null;
+      }, { passive: false });
+
+      window.addEventListener('resize', () => {
+        applyPadding();
+        // Refit current photo to new bounds.
+        const p = photos[selectedIdx];
+        if (p) {
+          const fit = fitPhoto(p.width || 4, p.height || 3);
+          mainPhotoWrap.style.width = fit.w + 'px';
+          mainPhotoWrap.style.height = fit.h + 'px';
+        }
+      });
+
+      // Start on the first (oldest) photo.
+      scrollY = 0;
+      setSelected(0);
+
+      const FRICTION = 0.05;     // 5% velocity per second → quick settle
+      const SNAP_THRESHOLD = 30; // px/sec below which we begin snap
+
+      function frame(ts) {
+        if (lastTs !== null) {
+          const dt = (ts - lastTs) / 1000;
+          const userInteracting = isDragging || sbDragging;
+
+          if (glideTarget !== null && !userInteracting) {
+            // Critically-damped-ish glide toward the click target.
+            const dist = glideTarget - scrollY;
+            if (Math.abs(dist) < 0.5) {
+              scrollY = glideTarget;
+              glideTarget = null;
+            } else {
+              scrollY += dist * Math.min(1, dt * 9);
+            }
+          } else if (!userInteracting) {
+            if (Math.abs(velocity) > 0.5) {
+              scrollY = clamp(scrollY + velocity * dt);
+              velocity *= Math.pow(FRICTION, dt);
+              if (Math.abs(velocity) < SNAP_THRESHOLD) {
+                velocity = 0;
+                glideTarget = clamp(Math.round(scrollY / STEP) * STEP);
+              }
+            } else if (scrollY % STEP !== 0) {
+              // Idle but unsnapped → glide to nearest.
+              glideTarget = clamp(Math.round(scrollY / STEP) * STEP);
+            }
+          }
+        }
+        lastTs = ts;
+
+        track.style.transform = `translateY(${(-scrollY).toFixed(2)}px)`;
+
+        // Currently-centered photo
+        const i = Math.max(0, Math.min(maxIdx, Math.round(scrollY / STEP)));
+        setSelected(i);
+
+        // Scrollbar position — fixed-size thumb sliding along the visible track.
+        const TRACK_H = 280;
+        const THUMB_H_BAR = 137;
+        const range = Math.max(1, maxScroll());
+        const prog = scrollY / range;
+        const top = prog * (TRACK_H - THUMB_H_BAR);
+        scrollbarEl.style.top = top + 'px';
+
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    main();
+  </script>
+</body>
+</html>
