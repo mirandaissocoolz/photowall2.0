@@ -159,10 +159,11 @@
     }
 
     /* ── Loading screen ──
-       Full-screen white panel shown while the photo metadata + first image
-       load. A pixel-art radiant loader animates in the center, three lines
-       of greeting type out underneath, and the whole thing fades to reveal
-       the gallery. */
+       Full-screen white panel shown while photos download. A pixel-art
+       radiant loader animates in the center, with one line of greeting
+       text typing out underneath. Lines cycle through type → erase → next
+       until everything's ready, then the whole thing fades to reveal the
+       gallery. */
     #loadingScreen {
       position: fixed;
       inset: 0;
@@ -172,7 +173,6 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 25px;
       font-family: 'DM Mono', ui-monospace, Menlo, monospace;
       font-weight: 300;
       color: black;
@@ -200,35 +200,16 @@
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
-    /* Lines stay hidden until each is about to be typed. Hiding them with
-       display:none takes their flex gaps out of the layout too, so the
-       outer flex re-centers the whole group around just what's visible. */
-    .loading-italic {
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      gap: 0;
-    }
-    .loading-italic.revealed { display: flex; }
-    /* Font sizes shrink with viewport so the longest line
-       ("miranda hopes you leave inspired.", 33 chars) keeps ≥50px of
-       margin on both sides. Linear scale from full size down to a
-       readable minimum; clamped so very narrow screens don't go tiny. */
-    .loading-line-1 {
+    /* Font size shrinks with viewport so the longest line
+       ("she hopes you leave feeling inspired.", 38 chars) keeps ≥50px of
+       margin on both sides. Reserve one line-height of vertical space so
+       the layout doesn't jump as the line empties and refills. */
+    .loading-line {
       font-size: clamp(11px, calc(3.4vw - 3px), 17px);
       text-align: center;
       white-space: pre;
-      display: none;
+      min-height: 1.2em;
     }
-    .loading-line-italic {
-      font-size: clamp(13px, calc(5vw - 5px), 25px);
-      font-style: italic;
-      text-align: center;
-      white-space: pre;
-      display: none;
-    }
-    .loading-line-1.revealed,
-    .loading-line-italic.revealed { display: block; }
     /* Hide the gallery until the loading sequence finishes so neither the
        photo nor its controls flash behind the loader. */
     body:not(.ready) .info-icon,
@@ -510,11 +491,7 @@
   <div id="loadingScreen">
     <div class="loading-top">
       <canvas id="px-loader" width="100" height="100" aria-hidden="true"></canvas>
-      <p class="loading-line-1" id="loadingLine1"></p>
-    </div>
-    <div class="loading-italic">
-      <p class="loading-line-italic" id="loadingLine2"></p>
-      <p class="loading-line-italic" id="loadingLine3"></p>
+      <p class="loading-line" id="loadingLine"></p>
     </div>
   </div>
 
@@ -670,16 +647,36 @@
       requestAnimationFrame(loop);
     }
 
-    // Local visitor counter — increments on each page load and persists in
-    // localStorage. (Swap for a Supabase RPC if you want a global count.)
-    function nextVisitorNumber() {
+    // Global visitor counter — calls a Supabase RPC that atomically
+    // increments a single-row counter and returns the new total. The SQL
+    // for the RPC lives in the README; if it isn't deployed yet (or the
+    // request fails for any reason), we fall back to a localStorage count
+    // so the page still loads with something sensible to display.
+    async function nextVisitorNumber() {
       try {
-        const key = 'photowall_visitor_count';
-        const next = (parseInt(localStorage.getItem(key) || '0', 10) || 0) + 1;
-        localStorage.setItem(key, String(next));
-        return next;
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_visitor_count`, {
+          method: 'POST',
+          headers: {
+            apikey: ANON_KEY,
+            Authorization: `Bearer ${ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: '{}',
+        });
+        if (!r.ok) throw new Error('rpc ' + r.status);
+        const count = await r.json();
+        const n = Number(count);
+        if (Number.isFinite(n) && n > 0) return n;
+        throw new Error('bad rpc payload');
       } catch (_) {
-        return 1;
+        try {
+          const key = 'photowall_visitor_count';
+          const next = (parseInt(localStorage.getItem(key) || '0', 10) || 0) + 1;
+          localStorage.setItem(key, String(next));
+          return next;
+        } catch (__) {
+          return 1;
+        }
       }
     }
 
@@ -701,6 +698,19 @@
       });
     }
 
+    // Erase the contents of `el` one character at a time, `delay` ms apart.
+    function eraseText(el, delay) {
+      return new Promise(resolve => {
+        function step() {
+          const t = el.textContent;
+          if (t.length === 0) { resolve(); return; }
+          el.textContent = t.slice(0, -1);
+          setTimeout(step, delay);
+        }
+        step();
+      });
+    }
+
     function preloadImage(src) {
       return new Promise(resolve => {
         const img = new Image();
@@ -710,45 +720,67 @@
       });
     }
 
-    async function runLoadingSequence(visitorNum) {
-      const line1 = document.getElementById('loadingLine1');
-      const line2 = document.getElementById('loadingLine2');
-      const line3 = document.getElementById('loadingLine3');
-      const italicBlock = document.querySelector('.loading-italic');
+    // Cycle through the greeting lines until `photosReady` resolves. Each
+    // line types out, holds, then erases before the next one types. The
+    // last line is held (not erased) while we wait on photos, so the
+    // screen lingers on a complete sentence rather than a blank state.
+    async function runLoadingSequence(visitorNum, photosReady) {
+      const line = document.getElementById('loadingLine');
+      const lines = [
+        `hello visitor #${visitorNum}!`,
+        "welcome to miranda's photowall.",
+        'she hopes you leave feeling inspired.',
+      ];
 
-      // Each line is `display: none` until just before its typewriter
-      // starts. Revealing it lets the outer flex column re-center the
-      // whole group around whatever's currently visible.
-      line1.classList.add('revealed');
-      await typeText(line1, `hello visitor #${visitorNum}!`, 50);
-      await wait(1000);
-      italicBlock.classList.add('revealed');
-      line2.classList.add('revealed');
-      await typeText(line2, "welcome to miranda's photowall.", 50);
-      await wait(1000);
-      line3.classList.add('revealed');
-      await typeText(line3, 'miranda hopes you leave inspired.', 50);
+      let photosDone = false;
+      photosReady.then(() => { photosDone = true; });
+
+      let i = 0;
+      while (true) {
+        const isLast = i === lines.length - 1;
+        await typeText(line, lines[i], 85);
+        if (isLast) {
+          // Hold the closing line until photos finish loading, then exit.
+          await photosReady;
+          await wait(900);
+          return;
+        }
+        await wait(1400);
+        await eraseText(line, 50);
+        await wait(250);
+        i++;
+        // If we ran out of lines but photos still aren't ready, loop back
+        // to the first line so the user always sees motion.
+        if (i >= lines.length) i = 0;
+        if (photosDone && i === 0) {
+          // Photos are ready and we're about to restart — jump straight
+          // to the closer instead of cycling again.
+          i = lines.length - 1;
+        }
+      }
     }
 
     async function main() {
       // Kick off the loader animation immediately, in parallel with the
       // photo fetch and typewriter sequence.
       startPixelLoader();
-      const visitorNum = nextVisitorNumber();
-      const typewriterDone = runLoadingSequence(visitorNum);
 
-      const photos = await fetchPhotos();
+      const photosPromise = fetchPhotos();
+      const visitorNum = await nextVisitorNumber();
+      const photos = await photosPromise;
       if (!photos || photos.length === 0) {
-        document.getElementById('loadingLine1').textContent = 'no photos found';
+        document.getElementById('loadingLine').textContent = 'no photos found';
         return;
       }
 
-      // Wait for the first photo's full-size image to load so the gallery
-      // isn't blank when we reveal it.
-      await preloadImage(photoUrl(photos[0].file_name));
-      // Don't yank the loading screen mid-sentence — let the typewriter
-      // finish even if photos finished first.
-      await typewriterDone;
+      // Wait for every photo to fully load before revealing the gallery,
+      // so thumbnails and the main stage don't pop in afterward.
+      const photosReady = Promise.all(
+        photos.map(p => preloadImage(photoUrl(p.file_name)))
+      );
+      // The typewriter sequence holds its final line until photosReady
+      // resolves, so awaiting it gates the fade on both signals at once.
+      await runLoadingSequence(visitorNum, photosReady);
 
       const track = document.getElementById('thumbsTrack');
       const wrap = document.getElementById('thumbsWrap');
