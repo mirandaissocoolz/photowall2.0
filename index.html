@@ -746,13 +746,17 @@
       });
     }
 
-    // Resolve once at least `fraction` of `srcs` have finished loading.
-    // Kicks off every download immediately so the remainder keeps loading
-    // in the background after the gallery is revealed.
-    function preloadFraction(srcs, fraction) {
+    // Load `srcs` in priority order — earlier entries finish before later
+    // ones — with at most `concurrency` downloads in flight at a time. This
+    // prevents the browser from splitting bandwidth across every photo and
+    // guarantees the first (initially-shown) photo lands before any others.
+    // Resolves as soon as the first `minCount` have completed; the rest
+    // continue downloading in the background.
+    function preloadInOrder(srcs, minCount, concurrency) {
       return new Promise(resolve => {
         if (srcs.length === 0) { resolve(); return; }
-        const target = Math.max(1, Math.ceil(srcs.length * fraction));
+        const target = Math.min(srcs.length, Math.max(1, minCount));
+        let cursor = 0;
         let done = 0;
         let resolved = false;
         const finish = () => {
@@ -761,13 +765,18 @@
             resolved = true;
             resolve();
           }
+          startNext();
         };
-        srcs.forEach(src => {
+        function startNext() {
+          if (cursor >= srcs.length) return;
+          const src = srcs[cursor++];
           const img = new Image();
           img.onload = finish;
           img.onerror = finish;
           img.src = src;
-        });
+        }
+        const workers = Math.min(concurrency, srcs.length);
+        for (let i = 0; i < workers; i++) startNext();
       });
     }
 
@@ -824,13 +833,15 @@
         return;
       }
 
-      // Reveal the gallery once 80% of photos have loaded — the rest
-      // continue downloading in the background and pop in as they finish.
-      // The main stage already fades each photo in via its own onload, so
-      // an unloaded one just briefly shows at low opacity.
-      const photosReady = preloadFraction(
+      // Load photos in display order with a small concurrency cap so the
+      // first one (the initially-shown photo) finishes first. Reveal the
+      // gallery once the first few are loaded; the rest stream in. The
+      // main stage already fades each photo in via its own onload, so an
+      // unloaded one just briefly shows at low opacity.
+      const photosReady = preloadInOrder(
         photos.map(p => photoUrl(p.file_name)),
-        0.8
+        5,   // minimum loaded before revealing
+        4    // concurrent downloads
       );
       // The typewriter sequence holds its final line until photosReady
       // resolves, so awaiting it gates the fade on both signals at once.
