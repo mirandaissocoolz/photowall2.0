@@ -211,12 +211,19 @@
       min-height: 1.2em;
     }
     /* Hide the gallery until the loading sequence finishes so neither the
-       photo nor its controls flash behind the loader. */
+       photo nor its controls flash behind the loader. Once `.ready` is
+       added on <body>, the elements fade in on the same clock as the
+       loading screen fades out — producing a smooth crossfade rather than
+       a snap-in. */
+    .info-icon, .scrollbar, .thumbs-wrap, .stage {
+      transition: opacity 0.55s ease;
+    }
     body:not(.ready) .info-icon,
     body:not(.ready) .scrollbar,
     body:not(.ready) .thumbs-wrap,
     body:not(.ready) .stage {
-      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
     }
 
     /* ── Story modal ──
@@ -720,6 +727,31 @@
       });
     }
 
+    // Resolve once at least `fraction` of `srcs` have finished loading.
+    // Kicks off every download immediately so the remainder keeps loading
+    // in the background after the gallery is revealed.
+    function preloadFraction(srcs, fraction) {
+      return new Promise(resolve => {
+        if (srcs.length === 0) { resolve(); return; }
+        const target = Math.max(1, Math.ceil(srcs.length * fraction));
+        let done = 0;
+        let resolved = false;
+        const finish = () => {
+          done++;
+          if (!resolved && done >= target) {
+            resolved = true;
+            resolve();
+          }
+        };
+        srcs.forEach(src => {
+          const img = new Image();
+          img.onload = finish;
+          img.onerror = finish;
+          img.src = src;
+        });
+      });
+    }
+
     // Cycle through the greeting lines until `photosReady` resolves. Each
     // line types out, holds, then erases before the next one types. The
     // last line is held (not erased) while we wait on photos, so the
@@ -773,10 +805,13 @@
         return;
       }
 
-      // Wait for every photo to fully load before revealing the gallery,
-      // so thumbnails and the main stage don't pop in afterward.
-      const photosReady = Promise.all(
-        photos.map(p => preloadImage(photoUrl(p.file_name)))
+      // Reveal the gallery once 80% of photos have loaded — the rest
+      // continue downloading in the background and pop in as they finish.
+      // The main stage already fades each photo in via its own onload, so
+      // an unloaded one just briefly shows at low opacity.
+      const photosReady = preloadFraction(
+        photos.map(p => photoUrl(p.file_name)),
+        0.8
       );
       // The typewriter sequence holds its final line until photosReady
       // resolves, so awaiting it gates the fade on both signals at once.
