@@ -798,7 +798,7 @@
       let i = 0;
       while (true) {
         const isLast = i === lines.length - 1;
-        await typeText(line, lines[i], 85);
+        await typeText(line, lines[i], 40);
         if (isLast) {
           // Hold the closing line until photos finish loading, then exit.
           await photosReady;
@@ -806,7 +806,7 @@
           return;
         }
         await wait(1400);
-        await eraseText(line, 50);
+        await eraseText(line, 25);
         await wait(250);
         i++;
         // If we ran out of lines but photos still aren't ready, loop back
@@ -1162,16 +1162,27 @@
       sbTrack.addEventListener('pointercancel', endSbDrag);
 
       // ── Input: wheel / trackpad ──
-      // Use the dominant axis so a horizontal-wheel gesture works on the
-      // bottom thumb row, and a vertical-wheel gesture still works on the
-      // side column.
-      wrap.addEventListener('wheel', (e) => {
+      // Listen anywhere on the page so the user can scroll through photos
+      // without having to aim at the thumbnail strip. Skip while the story
+      // overlay is open so its own content can scroll normally.
+      window.addEventListener('wheel', (e) => {
+        if (storyOverlay.classList.contains('open')) return;
         e.preventDefault();
         const d = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
         scrollPos = clamp(scrollPos + d);
         velocity = 0;
         glideTarget = null;
       }, { passive: false });
+
+      // ── Input: ← / → arrow keys advance one photo at a time ──
+      document.addEventListener('keydown', (e) => {
+        if (storyOverlay.classList.contains('open')) return;
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        const dir = e.key === 'ArrowRight' ? 1 : -1;
+        const target = Math.max(0, Math.min(maxIdx, selectedIdx + dir));
+        glideTo(target);
+      });
 
       // Track which orientation we last rendered in, so resize can detect
       // a crossing of the breakpoint and re-seed the scroll position.

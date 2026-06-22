@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "photowall",
-      "runtimeExecutable": "ruby",
-      "runtimeArgs": ["-run", "-e", "httpd", "/Users/home/Desktop/CODE/photowall", "-p", "8765"],
+      "runtimeExecutable": "/usr/bin/python3",
+      "runtimeArgs": ["-c", "import os; os.chdir('/Users/home/Desktop/CODE/photowall'); from http.server import HTTPServer, SimpleHTTPRequestHandler; HTTPServer(('127.0.0.1', 8765), SimpleHTTPRequestHandler).serve_forever()"],
       "port": 8765
     }
   ]
