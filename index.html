@@ -239,13 +239,22 @@
       position: fixed;
       inset: 0;
       background: rgba(217, 217, 217, 0.5);
+      backdrop-filter: blur(7px);
+      -webkit-backdrop-filter: blur(7px);
       z-index: 50;
-      display: none;
+      display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.35s ease, visibility 0s linear 0.35s;
     }
-    .story-overlay.open { display: flex; }
+    .story-overlay.open {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.35s ease, visibility 0s linear 0s;
+    }
 
     .story-card {
       width: 482px;
@@ -333,8 +342,8 @@
     .story-arrow:hover { color: rgba(0, 0, 0, 0.85); }
     .story-arrow svg {
       display: block;
-      width: 8px;
-      height: 6px;
+      width: 16px;
+      height: 12px;
     }
 
     /* ── Contact card ── */
@@ -937,27 +946,57 @@
         if (e.key === 'Escape' && storyOverlay.classList.contains('open')) closeStory();
       });
 
-      // Arrow buttons in the card footer — navigate between views, or wiggle
-      // when at an edge. Either way the press plays the `next` click.
+      // Move between the card's views. `dir` is 'next' or 'prev'; at an edge
+      // the card wiggles instead of navigating off the ends.
+      function navigateView(dir) {
+        playNext();
+        const i = VIEWS.indexOf(storyCard.dataset.view);
+        const next = dir === 'next' ? i + 1 : i - 1;
+        if (next < 0 || next >= VIEWS.length) {
+          wiggleCard();
+        } else {
+          showView(VIEWS[next]);
+          wiggleCard();
+        }
+      }
+
+      // Arrow buttons in the card footer — delegate to navigateView.
       storyCard.addEventListener('click', (e) => {
         const navBtn = e.target.closest('[data-nav]');
         if (navBtn) {
-          playNext();
-          const dir = navBtn.dataset.nav;
-          const i = VIEWS.indexOf(storyCard.dataset.view);
-          const next = dir === 'next' ? i + 1 : i - 1;
-          if (next < 0 || next >= VIEWS.length) {
-            wiggleCard();
-          } else {
-            showView(VIEWS[next]);
-            wiggleCard();
-          }
+          navigateView(navBtn.dataset.nav);
           return;
         }
         // Social link — play the enter chime; default click opens in a new tab.
         const social = e.target.closest('[data-social]');
         if (social) playEnter();
       });
+
+      // Keyboard: ← / → switch views while the card is open (desktop).
+      document.addEventListener('keydown', (e) => {
+        if (!storyOverlay.classList.contains('open')) return;
+        if (e.key === 'ArrowLeft') navigateView('prev');
+        else if (e.key === 'ArrowRight') navigateView('next');
+      });
+
+      // Touch: horizontal swipe on the card switches views (mobile).
+      let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
+      storyCard.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        swipeStartX = e.touches[0].clientX;
+        swipeStartY = e.touches[0].clientY;
+        swipeTracking = true;
+      }, { passive: true });
+      storyCard.addEventListener('touchend', (e) => {
+        if (!swipeTracking) return;
+        swipeTracking = false;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - swipeStartX;
+        const dy = t.clientY - swipeStartY;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          navigateView(dx < 0 ? 'next' : 'prev');
+        }
+      }, { passive: true });
 
       function setSelected(i) {
         if (i === selectedIdx) return;
