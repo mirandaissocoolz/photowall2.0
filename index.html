@@ -141,6 +141,10 @@
       overflow: hidden;
       will-change: opacity;
       transition: opacity 0.18s ease;
+      cursor: pointer;
+    }
+    .main-photo-wrap.wiggle {
+      animation: story-wiggle 0.55s ease-out;
     }
     .main-photo-wrap img {
       width: 100%;
@@ -890,6 +894,11 @@
 
       const mainPhoto = document.getElementById('mainPhoto');
       const mainPhotoWrap = document.getElementById('mainPhotoWrap');
+      mainPhotoWrap.addEventListener('click', () => {
+        mainPhotoWrap.classList.remove('wiggle');
+        void mainPhotoWrap.offsetWidth;
+        mainPhotoWrap.classList.add('wiggle');
+      });
       const metaTitle = document.getElementById('metaTitle');
       const metaDate = document.getElementById('metaDate');
       const scrollbarEl = document.getElementById('scrollbar');
