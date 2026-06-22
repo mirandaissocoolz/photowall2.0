@@ -238,6 +238,144 @@
       visibility: hidden;
     }
 
+    /* ── Story modal ──
+       Full-screen overlay + centered story card, shown when the info icon
+       is clicked. The card wiggles briefly on first appearance. */
+    .story-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(217, 217, 217, 0.5);
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .story-overlay.open { display: flex; }
+
+    .story-card {
+      width: 482px;
+      max-width: calc(100vw - 80px);
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      background: white;
+      border: 2px dashed rgba(0, 0, 0, 0.5);
+      padding: 40px 40px 22px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: default;
+      font-family: 'DM Mono', ui-monospace, Menlo, monospace;
+      font-weight: 300;
+    }
+    .story-overlay.open .story-card {
+      animation: story-wiggle 0.55s ease-out;
+    }
+    @keyframes story-wiggle {
+      0%   { transform: rotate(0deg) scale(0.96); }
+      20%  { transform: rotate(-2.5deg) scale(1.01); }
+      40%  { transform: rotate(2deg) scale(1.01); }
+      60%  { transform: rotate(-1.2deg) scale(1); }
+      80%  { transform: rotate(0.6deg) scale(1); }
+      100% { transform: rotate(0deg) scale(1); }
+    }
+
+    .story-inner {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 19px;
+    }
+    .story-text {
+      width: 100%;
+      font-size: 12px;
+      color: rgba(0, 0, 0, 0.5);
+      line-height: normal;
+      word-break: break-word;
+    }
+    .story-pic {
+      width: 100%;
+      aspect-ratio: 2751 / 1830;
+      overflow: hidden;
+    }
+    .story-pic img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      -webkit-user-drag: none;
+    }
+    .story-line {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+    .story-line > div {
+      width: 393px;
+      max-width: 100%;
+      height: 1px;
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .story-title {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      font-size: 12px;
+      color: rgba(0, 0, 0, 0.5);
+    }
+    .story-arrow {
+      background: none;
+      border: 0;
+      padding: 4px 6px;
+      cursor: pointer;
+      color: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+    .story-arrow:hover { color: rgba(0, 0, 0, 0.85); }
+    .story-arrow svg {
+      display: block;
+      width: 8px;
+      height: 6px;
+    }
+
+    /* ── Contact card ── */
+    .story-socials {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: center;
+    }
+    .story-socials a {
+      width: 25.778px;
+      height: 25.778px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(0, 0, 0, 0.5);
+      transition: transform 0.18s ease, color 0.18s ease;
+      will-change: transform;
+    }
+    .story-socials a:hover {
+      transform: translateY(-3px);
+      color: black;
+    }
+    .story-socials svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .story-text-center {
+      width: 100%;
+      font-size: 12px;
+      color: rgba(0, 0, 0, 0.5);
+      text-align: center;
+    }
+
     /* ── Narrow layout ──
        Triggers when the desktop side-by-side arrangement can't keep a 50px
        gap between the main photo and the thumbnail column. At max photo
@@ -302,6 +440,70 @@
     <div class="meta">
       <div class="title" id="metaTitle">—</div>
       <div class="date" id="metaDate">—</div>
+    </div>
+  </div>
+
+  <div class="story-overlay" id="storyOverlay" role="dialog" aria-modal="true" aria-label="story">
+    <div class="story-card" id="storyCard" data-view="story">
+      <!-- Story view -->
+      <div class="story-inner" data-view-panel="story">
+        <p class="story-text">i first got into photography after a family trip to cuba. i still remember the entire plane ride home, i was obsessed with playing with apple preset filters — like the ones called vivid and vivid warm (yea...). i later begged my dad to buy me the most popular camera at the time THE CANON G7X MARK ii!! (which i still use today). much later, i was lucky to be apart of a media team where i taught myself how to edit photos.</p>
+        <div class="story-pic">
+          <img src="story/story_pic.jpg" alt="">
+        </div>
+        <div class="story-line"><div></div></div>
+        <div class="story-title">
+          <button class="story-arrow" data-nav="prev" aria-label="previous">
+            <svg viewBox="0 0 8 6" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M0 3 L8 3 M0 3 L3 0 M0 3 L3 6" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <span>story</span>
+          <button class="story-arrow" data-nav="next" aria-label="next">
+            <svg viewBox="0 0 8 6" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M0 3 L8 3 M8 3 L5 0 M8 3 L5 6" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Contact view -->
+      <div class="story-inner" data-view-panel="contact" style="display: none;">
+        <p class="story-text-center">let's be friends!</p>
+        <div class="story-socials">
+          <a href="https://www.instagram.com/mirandasu.mov/" target="_blank" rel="noopener" aria-label="instagram" data-social>
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="2" y="2" width="20" height="20" rx="5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+              <circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.8" fill="none"/>
+              <circle cx="17.5" cy="6.5" r="1.1" fill="currentColor"/>
+            </svg>
+          </a>
+          <a href="https://x.com/mirandaiscoolz" target="_blank" rel="noopener" aria-label="x" data-social>
+            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M17.53 3H20.5l-6.5 7.43L21.75 21H15.6l-4.82-6.3L5.27 21H2.3l6.96-7.96L1.92 3h6.3l4.36 5.77L17.53 3zm-1.04 16.2h1.64L7.6 4.7H5.84L16.49 19.2z"/>
+            </svg>
+          </a>
+          <a href="https://www.linkedin.com/in/miranda-suu/" target="_blank" rel="noopener" aria-label="linkedin" data-social>
+            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.37V9h3.41v1.56h.05c.47-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.99 0 1.78-.77 1.78-1.72V1.72C24 .77 23.21 0 22.22 0z"/>
+            </svg>
+          </a>
+        </div>
+        <div class="story-line"><div></div></div>
+        <div class="story-title">
+          <button class="story-arrow" data-nav="prev" aria-label="previous">
+            <svg viewBox="0 0 8 6" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M0 3 L8 3 M0 3 L3 0 M0 3 L3 6" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <span>contact</span>
+          <button class="story-arrow" data-nav="next" aria-label="next">
+            <svg viewBox="0 0 8 6" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M0 3 L8 3 M8 3 L5 0 M8 3 L5 6" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -622,6 +824,74 @@
           if (p && p.catch) p.catch(() => {});
         } catch (_) {}
       }
+
+      // Info icon → story modal. Plays a chime on open; the card replays its
+      // wiggle animation each time it appears or its view swaps.
+      const infoSound = new Audio('sound%20effects/info_icon.MP3');
+      infoSound.preload = 'auto';
+      infoSound.volume = 0.7;
+      function playInfoSound() {
+        try {
+          // Clone so overlapping clicks each get their own playback.
+          infoSound.cloneNode().play().catch(() => {});
+        } catch (_) {}
+      }
+      const infoIcon = document.querySelector('.info-icon');
+      const storyOverlay = document.getElementById('storyOverlay');
+      const storyCard = document.getElementById('storyCard');
+      const panels = storyCard.querySelectorAll('[data-view-panel]');
+
+      // Card has two views — "story" and "contact" — laid out in this order.
+      // Right arrow on the last view (or left arrow on the first) just
+      // wiggles the card instead of navigating off the ends.
+      const VIEWS = ['story', 'contact'];
+      function showView(name) {
+        panels.forEach((p) => {
+          p.style.display = p.dataset.viewPanel === name ? '' : 'none';
+        });
+        storyCard.dataset.view = name;
+      }
+      function wiggleCard() {
+        storyCard.style.animation = 'none';
+        void storyCard.offsetWidth;
+        storyCard.style.animation = '';
+      }
+      function openStory() {
+        playInfoSound();
+        showView('story');
+        wiggleCard();
+        storyOverlay.classList.add('open');
+      }
+      function closeStory() { storyOverlay.classList.remove('open'); }
+
+      infoIcon.addEventListener('click', openStory);
+      storyOverlay.addEventListener('click', (e) => {
+        if (e.target === storyOverlay) closeStory();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && storyOverlay.classList.contains('open')) closeStory();
+      });
+
+      // Arrow buttons in the card footer — navigate between views, or wiggle
+      // when at an edge.
+      storyCard.addEventListener('click', (e) => {
+        const navBtn = e.target.closest('[data-nav]');
+        if (navBtn) {
+          const dir = navBtn.dataset.nav;
+          const i = VIEWS.indexOf(storyCard.dataset.view);
+          const next = dir === 'next' ? i + 1 : i - 1;
+          if (next < 0 || next >= VIEWS.length) {
+            wiggleCard();
+          } else {
+            showView(VIEWS[next]);
+            wiggleCard();
+          }
+          return;
+        }
+        // Social link — play the chime; default click opens in a new tab.
+        const social = e.target.closest('[data-social]');
+        if (social) playInfoSound();
+      });
 
       function setSelected(i) {
         if (i === selectedIdx) return;
