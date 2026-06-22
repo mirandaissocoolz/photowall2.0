@@ -186,12 +186,19 @@
         top: auto;
         bottom: 50px;
         width: 100vw;
-        height: 95px;
+        height: auto;            /* sized by .thumb height */
         touch-action: pan-y;     /* horizontal handled here */
       }
       .thumbs-track {
         flex-direction: row;
         align-items: center;
+      }
+      /* Thumbnails shrink with the viewport, keeping their 124:95 aspect.
+         Linear scale: 80px wide at innerWidth = 400, 124px at 1138. */
+      .thumb {
+        width: clamp(80px, calc(6vw + 56px), 124px);
+        height: auto;
+        aspect-ratio: 124 / 95;
       }
 
       .stage {
@@ -247,7 +254,13 @@
     // the desktop layout (see narrow-layout CSS for the math).
     const NARROW_BREAKPOINT = 1138;
     const isHorizontal = () => window.innerWidth < NARROW_BREAKPOINT;
-    const thumbSize = () => isHorizontal() ? THUMB_W : THUMB_H;
+    // Mirror the .thumb CSS clamp(80px, 6vw + 56px, 124px) so JS-side
+    // layout math (padding, step) stays in sync with what's rendered.
+    const thumbW = () => isHorizontal()
+      ? Math.max(80, Math.min(THUMB_W, 0.06 * window.innerWidth + 56))
+      : THUMB_W;
+    const thumbH = () => thumbW() * (THUMB_H / THUMB_W);
+    const thumbSize = () => isHorizontal() ? thumbW() : thumbH();
     const step = () => thumbSize() + GAP;
 
     const MONTHS = [
@@ -329,13 +342,13 @@
       // and so item N-1 can sit there too.
       function applyPadding() {
         if (isHorizontal()) {
-          const pad = (window.innerWidth / 2) - (THUMB_W / 2);
+          const pad = (window.innerWidth / 2) - (thumbSize() / 2);
           track.style.paddingLeft = pad + 'px';
           track.style.paddingRight = pad + 'px';
           track.style.paddingTop = '';
           track.style.paddingBottom = '';
         } else {
-          const pad = (window.innerHeight / 2) - (THUMB_H / 2);
+          const pad = (window.innerHeight / 2) - (thumbSize() / 2);
           track.style.paddingTop = pad + 'px';
           track.style.paddingBottom = pad + 'px';
           track.style.paddingLeft = '';
@@ -383,8 +396,22 @@
       const metaDate = document.getElementById('metaDate');
       const scrollbarEl = document.getElementById('scrollbar');
 
+      // Tick sound played each time the selection changes after the initial
+      // load. Preloaded so the first scroll doesn't lag while it fetches.
+      const tickSound = new Audio('sound%20effects/tick.MP3');
+      tickSound.preload = 'auto';
+      tickSound.volume = 0.6;
+      function playTick() {
+        try {
+          tickSound.currentTime = 0;
+          const p = tickSound.play();
+          if (p && p.catch) p.catch(() => {});
+        } catch (_) {}
+      }
+
       function setSelected(i) {
         if (i === selectedIdx) return;
+        const isInitial = selectedIdx === -1;
         selectedIdx = i;
         const p = photos[i];
 
@@ -401,6 +428,8 @@
         photoEls.forEach((el, idx) => {
           el.classList.toggle('is-selected', idx === i);
         });
+
+        if (!isInitial) playTick();
       }
 
       function glideTo(i) {
@@ -545,18 +574,17 @@
       window.addEventListener('resize', () => {
         const nowHorizontal = isHorizontal();
         if (nowHorizontal !== lastHorizontal) {
-          // Orientation flipped — clear the old-axis transform, repad along
-          // the new axis, and snap scroll position to the current selection
-          // using the new step size.
+          // Orientation flipped — clear the old-axis transform.
           track.style.transform = '';
           lastHorizontal = nowHorizontal;
-          applyPadding();
-          scrollPos = clamp(Math.max(0, selectedIdx) * step());
-          glideTarget = null;
-          velocity = 0;
-        } else {
-          applyPadding();
         }
+        // Always repad and reseat the scroll position on the current
+        // selection — both step() and the padding scale continuously with
+        // viewport width in the narrow layout.
+        applyPadding();
+        scrollPos = clamp(Math.max(0, selectedIdx) * step());
+        glideTarget = null;
+        velocity = 0;
 
         // Refit current photo to new bounds.
         const p = photos[selectedIdx];
