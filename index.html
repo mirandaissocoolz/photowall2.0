@@ -885,29 +885,21 @@
       const metaDate = document.getElementById('metaDate');
       const scrollbarEl = document.getElementById('scrollbar');
 
-      // Tick sound played each time the selection changes after the initial
-      // load. Preloaded so the first scroll doesn't lag while it fetches.
-      const tickSound = new Audio('sound%20effects/tick.MP3');
-      tickSound.preload = 'auto';
-      tickSound.volume = 0.6;
-      function playTick() {
-        try {
-          tickSound.currentTime = 0;
-          const p = tickSound.play();
-          if (p && p.catch) p.catch(() => {});
-        } catch (_) {}
+      // Two short sound effects. Each Audio is preloaded once and then
+      // cloned on every play so overlapping triggers don't cut each other
+      // off. `enter.mp3` accompanies "entering" moments (info modal open,
+      // page reveal); `next.mp3` is the click for the story-card arrows.
+      const enterSound = new Audio('sound%20effects/enter.mp3');
+      enterSound.preload = 'auto';
+      enterSound.volume = 0.7;
+      function playEnter() {
+        try { enterSound.cloneNode().play().catch(() => {}); } catch (_) {}
       }
-
-      // Info icon → story modal. Plays a chime on open; the card replays its
-      // wiggle animation each time it appears or its view swaps.
-      const infoSound = new Audio('sound%20effects/info_icon.MP3');
-      infoSound.preload = 'auto';
-      infoSound.volume = 0.7;
-      function playInfoSound() {
-        try {
-          // Clone so overlapping clicks each get their own playback.
-          infoSound.cloneNode().play().catch(() => {});
-        } catch (_) {}
+      const nextSound = new Audio('sound%20effects/next.mp3');
+      nextSound.preload = 'auto';
+      nextSound.volume = 0.7;
+      function playNext() {
+        try { nextSound.cloneNode().play().catch(() => {}); } catch (_) {}
       }
       const infoIcon = document.querySelector('.info-icon');
       const storyOverlay = document.getElementById('storyOverlay');
@@ -930,7 +922,7 @@
         storyCard.style.animation = '';
       }
       function openStory() {
-        playInfoSound();
+        playEnter();
         showView('story');
         wiggleCard();
         storyOverlay.classList.add('open');
@@ -946,10 +938,11 @@
       });
 
       // Arrow buttons in the card footer — navigate between views, or wiggle
-      // when at an edge.
+      // when at an edge. Either way the press plays the `next` click.
       storyCard.addEventListener('click', (e) => {
         const navBtn = e.target.closest('[data-nav]');
         if (navBtn) {
+          playNext();
           const dir = navBtn.dataset.nav;
           const i = VIEWS.indexOf(storyCard.dataset.view);
           const next = dir === 'next' ? i + 1 : i - 1;
@@ -961,14 +954,13 @@
           }
           return;
         }
-        // Social link — play the chime; default click opens in a new tab.
+        // Social link — play the enter chime; default click opens in a new tab.
         const social = e.target.closest('[data-social]');
-        if (social) playInfoSound();
+        if (social) playEnter();
       });
 
       function setSelected(i) {
         if (i === selectedIdx) return;
-        const isInitial = selectedIdx === -1;
         selectedIdx = i;
         const p = photos[i];
 
@@ -985,8 +977,6 @@
         photoEls.forEach((el, idx) => {
           el.classList.toggle('is-selected', idx === i);
         });
-
-        if (!isInitial) playTick();
       }
 
       function glideTo(i) {
@@ -1156,10 +1146,13 @@
       scrollPos = 0;
       setSelected(0);
 
-      // Reveal the gallery (visibility hidden until now) and fade the
-      // loading screen out on top of it. The CSS transition handles the
-      // fade; we remove the node after it completes so it can't intercept
-      // pointer events.
+      // Reveal the gallery (faded out until now) and fade the loading
+      // screen out on top of it. The CSS transition handles the fade; we
+      // remove the node after it completes so it can't intercept pointer
+      // events. The `enter` chime accompanies the reveal — if the browser
+      // is still gating autoplay on user interaction, the play() promise
+      // just rejects silently.
+      playEnter();
       document.body.classList.add('ready');
       const loadingScreen = document.getElementById('loadingScreen');
       if (loadingScreen) {
